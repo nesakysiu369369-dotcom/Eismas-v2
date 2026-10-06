@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marijampolė GIS - Eismo Schemų Redaktorius</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #eef2f5; }
+        
+        /* VIRŠUTINIS MENIU */
+        .menu-bar { background: #2c3e50; color: white; padding: 10px 15px; display: flex; gap: 10px; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 10; flex-shrink: 0; }
+        .menu-bar button { background: #34495e; color: white; border: 1px solid #465c71; padding: 6px 12px; cursor: pointer; border-radius: 4px; transition: 0.2s; font-size: 13px; }
+        .menu-bar button:hover { background: #3d566e; }
+        .menu-bar button.active-tool { background: #2980b9; border-color: #3498db; }
+        .menu-divider { border-left: 1px solid #5a6a7a; height: 24px; margin: 0 5px; }
+        .danger-btn { background: #e74c3c !important; border-color: #c0392b !important; margin-left: auto; }
+        .danger-btn:hover { background: #c0392b !important; }
+        
+        /* PAGRINDINĖ DALIS */
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* ŠONINĖ JUOSTA */
+        .sidebar { width: 280px; background: #fff; border-right: 1px solid #dcdcdc; padding: 15px; overflow-y: auto; box-shadow: 2px 0 5px rgba(0,0,0,0.05); flex-shrink: 0; }
+        .sidebar h3 { margin-top: 0; font-size: 13px; color: #333; text-transform: uppercase; border-bottom: 2px solid #3498db; padding-bottom: 5px; }
+        .sidebar-section { margin-bottom: 20px; }
+        
+        .upload-btn { display: block; width: 100%; padding: 8px; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-bottom: 10px; text-align: center; font-size: 12px; }
+        .upload-btn:hover { background: #219653; }
+        
+        /* ŽENKLŲ TINKLELIS */
+        .sign-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        .sign-btn { border: 1px solid #e0e0e0; background: #fafafa; border-radius: 6px; padding: 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; text-align: center; transition: 0.2s; }
+        .sign-btn:hover { border-color: #3498db; background: #ebf5fb; }
+        .sign-btn.active { border-color: #e74c3c; background: #fdf2f0; box-shadow: 0 0 5px rgba(231, 76, 60, 0.5); }
+        
+        .sign-btn img { max-width: 100%; height: 45px; object-fit: contain; margin-bottom: 4px; }
+        .sign-btn.pole-btn img { width: 10px; height: 45px; object-fit: cover; background: linear-gradient(to right, #777, #ccc, #777); border: 1px solid #444; border-radius: 2px; }
+        
+        .sign-label { font-size: 10px; color: #555; line-height: 1.1; }
+        
+        /* DROBĖS ZONA */
+        .workspace { flex: 1; overflow: auto; display: flex; justify-content: center; align-items: center; padding: 20px; background: #f4f6f9; position: relative; }
+        canvas { background: white; box-shadow: 0 4px 12px rgba(0,0,0,0.15); cursor: crosshair; }
+        
+        .empty-state { position: absolute; text-align: center; color: #7f8c8d; pointer-events: none; }
+        .empty-state h2 { margin-bottom: 10px; color: #2c3e50; }
+    </style>
+</head>
+<body>
+
+    <!-- Nematomi failų įvesties elementai -->
+    <input type="file" id="upload-schema" accept="image/*" style="display:none">
+    <input type="file" id="upload-custom-element" accept="image/*" style="display:none">
+    <input type="file" id="upload-project" accept=".json" style="display:none">
+
+    <!-- VIRŠUTINIS MENIU -->
+    <div class="menu-bar">
+        <span><b>Failas:</b></span>
+        <button id="btn-new-project">Naujas projektas</button>
+        <button id="btn-save">Išsaugoti</button>
+        <button id="btn-open">Atidaryti</button>
+        
+        <div class="menu-divider"></div>
+        
+        <span><b>Įrankiai:</b></span>
+        <button id="btn-measure">Matuoti atstumą</button>
+        <button id="btn-outlook">Eksportuoti į Outlook</button>
+        
+        <button id="btn-clear-all" class="danger-btn">Ištrinti viską</button>
+    </div>
+
+    <!-- PAGRINDINĖ DALIS -->
+    <div class="main-container">
+        
+        <!-- ŠONINĖ JUOSTA -->
+        <div class="sidebar">
+            
+            <div class="sidebar-section">
+                <h3>Savo elementai</h3>
+                <button class="upload-btn" id="btn-add-custom">+ Įkelti savo elementą</button>
+                <div class="sign-grid" id="custom-elements-grid"></div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>KET Katalogas</h3>
+                <div class="sign-grid" id="ket-grid">
+                    <div class="sign-btn pole-btn" onclick="selectSign(this, 'pole')">
+                        <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Stulpas">
+                        <span class="sign-label">3D Stulpas</span>
+                    </div>
+                    
+                    <div class="sign-btn" onclick="selectSign(this, 'pagrindinis_kelias')">
+                        <img src="data:image/svg+xml;utf8,<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'><polygon points='50,5 95,50 50,95 5,50' fill='yellow' stroke='white' stroke-width='3'/><polygon points='50,15 85,50 50,85 15,50' fill='yellow' stroke='black' stroke-width='2'/></svg>">
+                        <span class="sign-label">201 Pagrindinis</span>
+                    </div>
+                    
+                    <div class="sign-btn" onclick="selectSign(this, 'duoti_kelia')">
+                        <img src="data:image/svg+xml;utf8,<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'><polygon points='5,5 95,5 50,90' fill='white' stroke='red' stroke-width='10'/></svg>">
+                        <span class="sign-label">203 Duoti kelią</span>
+                    </div>
+                    
+                    <div class="sign-btn" onclick="selectSign(this, 'stop')">
+                        <img src="data:image/svg+xml;utf8,<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'><polygon points='30,5 70,5 95,30 95,70 70,95 30,95 5,70 5,30' fill='red'/><text x='50' y='58' fill='white' font-size='30' font-family='Arial' font-weight='bold' text-anchor='middle'>STOP</text></svg>">
+                        <span class="sign-label">204 STOP</span>
+                    </div>
+                    
+                    <div class="sign-btn" onclick="selectSign(this, 'greitis_50')">
+                        <img src="data:image/svg+xml;utf8,<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'><circle cx='50' cy='50' r='45' fill='white' stroke='red' stroke-width='10'/><text x='50' y='65' fill='black' font-size='40' font-family='Arial' font-weight='bold' text-anchor='middle'>50</text></svg>">
+                        <span class="sign-label">329 Greitis 50</span>
+                    </div>
+
+                    <div class="sign-btn" onclick="selectSign(this, 'pesciuju_pereja')">
+                        <img src="data:image/svg+xml;utf8,<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'><rect x='5' y='5' width='90' height='90' fill='blue' rx='10'/><polygon points='50,20 80,80 20,80' fill='white'/></svg>">
+                        <span class="sign-label">533 Perėja</span>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+        
+        <!-- DROBĖ -->
+        <div class="workspace" id="workspace">
+            <div class="empty-state" id="empty-state">
+                <h2>Nėra įkeltos schemos</h2>
+                <p>Spustelėkite viršuje „Naujas projektas“, kad įkeltumėte schemos nuotrauką.</p>
+            </div>
+            <canvas id="canvas" width="800" height="600" style="display:none;"></canvas>
+        </div>
+        
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const workspace = document.getElementById('workspace');
+        const emptyState = document.getElementById('empty-state');
+
+        let currentImage = null; 
+        let placedElements = []; 
+        let activeElementSource = null; 
+        let activeElementType = null;
+
+        let isMeasuring = false;
+        let measureStart = null;
+        let measureEnd = null;
+
+        document.getElementById('btn-new-project').addEventListener('click', () => {
+            document.getElementById('upload-schema').click();
+        });
+
+        document.getElementById('upload-schema').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    currentImage = img;
+                    placedElements = [];
+                    measureStart = null;
+                    measureEnd = null;
+                    
+                    canvas.style.display = 'block';
+                    emptyState.style.display = 'none';
+                    drawCanvas();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        document.getElementById('btn-add-custom').addEventListener('click', () => {
+            document.getElementById('upload-custom-element').click();
+        });
+
+        document.getElementById('upload-custom-element').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const grid = document.getElementById('custom-elements-grid');
+                const newBtn = document.createElement('div');
+                newBtn.className = 'sign-btn';
+                
+                const imgSrc = event.target.result;
+                newBtn.onclick = function() { selectCustomSign(newBtn, imgSrc); };
+                
+                newBtn.innerHTML = `
+                    <img src="${imgSrc}" alt="Elementas">
+                    <span class="sign-label">${file.name.substring(0, 10)}...</span>
+                `;
+                grid.appendChild(newBtn);
+            };
+            reader.readAsDataURL(file);
+        });
+
+        function selectSign(buttonElement, type) {
+            cancelActiveTools();
+            document.querySelectorAll('.sign-btn').forEach(btn => btn.classList.remove('active'));
+            buttonElement.classList.add('active');
+            
+            const imgEl = buttonElement.querySelector('img');
+            activeElementSource = imgEl;
+            activeElementType = type;
+        }
+
+        function selectCustomSign(buttonElement, imgSrc) {
+            cancelActiveTools();
+            document.querySelectorAll('.sign-btn').forEach(btn => btn.classList.remove('active'));
+            buttonElement.classList.add('active');
+            
+            const img = new Image();
+            img.src = imgSrc;
+            activeElementSource = img;
+            activeElementType = 'custom';
+        }
+
+        function cancelActiveTools() {
+            isMeasuring = false;
+            document.getElementById('btn-measure').classList.remove('active-tool');
+            activeElementSource = null;
+            activeElementType = null;
+            document.querySelectorAll('.sign-btn').forEach(btn => btn.classList.remove('active'));
+        }
+
+        document.getElementById('btn-measure').addEventListener('click', () => {
+            if (!currentImage) { alert("Pirmiausia įkelkite schemą."); return; }
+            const btn = document.getElementById('btn-measure');
+            isMeasuring = !isMeasuring;
+            
+            if (isMeasuring) {
+                cancelActiveTools();
+                isMeasuring = true;
+                btn.classList.add('active-tool');
+                measureStart = null;
+                measureEnd = null;
+            } else {
+                btn.classList.remove('active-tool');
+            }
+            drawCanvas();
+        });
+
+        canvas.addEventListener('click', function(e) {
+            if (!currentImage) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = (e.clientX - rect.left) * scaleX
